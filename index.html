@@ -194,14 +194,14 @@
             <div class="btn-toggle-group">
                 <button id="btnViewOverall" class="btn-toggle" onclick="setSolarViewMode('overall')">Overall</button>
                 <button id="btnViewYearly" class="btn-toggle" onclick="setSolarViewMode('yearly')">Yearly</button>
-                <button id="btnViewCompare3Y" class="btn-toggle" onclick="setSolarViewMode('compare3y')">3-Year Monthly Comparison</button>
+                <button id="btnViewCompare2Y" class="btn-toggle" onclick="setSolarViewMode('compare2y')">2-Year Comparison</button>
                 <button id="btnViewMonthly" class="btn-toggle" onclick="setSolarViewMode('monthly')">Monthly</button>
                 <button id="btnViewDaily" class="btn-toggle active" onclick="setSolarViewMode('daily')">Daily View</button>
             </div>
             <span id="solar-period-title" style="font-weight: 600; color: var(--text-muted); font-size: 0.85rem;"></span>
         </div>
 
-        <!-- Metric Filter Switch for 3-Year Comparison Mode -->
+        <!-- Metric Filter Switch for 2-Year Comparison Mode -->
         <div id="compare-metric-selector" style="display: none; margin-bottom: 16px; align-items: center; gap: 8px;">
             <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Comparison Metric:</label>
             <select id="compare-metric-type" onchange="renderSolarDashboard()">
@@ -371,11 +371,11 @@
         currentSolarViewMode = mode;
         document.getElementById('btnViewOverall').classList.toggle('active', mode === 'overall');
         document.getElementById('btnViewYearly').classList.toggle('active', mode === 'yearly');
-        document.getElementById('btnViewCompare3Y').classList.toggle('active', mode === 'compare3y');
+        document.getElementById('btnViewCompare2Y').classList.toggle('active', mode === 'compare2y');
         document.getElementById('btnViewMonthly').classList.toggle('active', mode === 'monthly');
         document.getElementById('btnViewDaily').classList.toggle('active', mode === 'daily');
 
-        document.getElementById('compare-metric-selector').style.display = mode === 'compare3y' ? 'flex' : 'none';
+        document.getElementById('compare-metric-selector').style.display = mode === 'compare2y' ? 'flex' : 'none';
 
         renderSolarDashboard();
     }
@@ -389,22 +389,28 @@
         let labels = [];
         let totalGen = 0, totalCon = 0, totalPur = 0;
 
-        if (currentSolarViewMode === 'compare3y') {
+        if (currentSolarViewMode === 'compare2y') {
             const metricType = document.getElementById('compare-metric-type').value || 'generated';
             const metricLabels = { generated: 'Generated', consumed: 'Consumed', purchased: 'Purchased' };
-            title = `Scope: 3-Year Monthly Comparison (${metricLabels[metricType]})`;
 
-            // Identify unique available years
+            // Identify available unique years
             const yearsSet = new Set();
             solarDailyData.forEach(d => { if (d.date) yearsSet.add(d.date.substring(0, 4)); });
-            let sortedYears = Array.from(yearsSet).sort().slice(-3); // Get latest 3 years
+            let sortedYears = Array.from(yearsSet).sort().slice(-2); // Take latest 2 years
 
-            if (sortedYears.length === 0) sortedYears = [new Date().getFullYear().toString()];
+            if (sortedYears.length < 2) {
+                // If only 1 year exists, default to current and prior year label
+                let currentY = sortedYears[0] || new Date().getFullYear().toString();
+                let prevY = (parseInt(currentY, 10) - 1).toString();
+                sortedYears = [prevY, currentY];
+            }
+
+            title = `Scope: 2-Year Comparison (${sortedYears.join(' vs ')}) - ${metricLabels[metricType]}`;
 
             labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            const yearColors = ['#2563eb', '#10b981', '#f59e0b'];
+            const yearColors = ['#2563eb', '#f59e0b']; // Blue & Amber contrast colors
 
-            // Aggregate data: { Year: { monthIdx: total } }
+            // Aggregate data: { Year: [Jan..Dec totals] }
             const yearAgg = {};
             sortedYears.forEach(y => yearAgg[y] = Array(12).fill(0));
 
