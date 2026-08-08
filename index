@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solar Energy Monitor & Analytics</title>
+    <!-- External Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --solar-primary: #d97706;
+            --solar-bg: #fffbeb;
+            --surface: #ffffff;
+            --background: #f8fafc;
+            --border: #e2e8f0;
+            --border-hover: #cbd5e1;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --generated-color: #f59e0b;
+            --consumed-color: #10b981;
+            --purchased-color: #ef4444;
+            --radius-lg: 16px;
+            --radius-md: 10px;
+            --radius-sm: 6px;
+            --shadow-subtle: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+            --shadow-card: 0 4px 6px -1px rgba(15, 23, 42, 0.04), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--background);
+            color: var(--text-main);
+            margin: 0;
+            padding: 32px 20px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        /* App Header */
+        .app-navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 28px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+        .app-brand { display: flex; align-items: center; gap: 12px; }
+        .app-brand-icon {
+            width: 42px; height: 42px; 
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            border-radius: var(--radius-md); 
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 1.35rem; 
+            box-shadow: 0 4px 10px rgba(217, 119, 6, 0.25);
+        }
+        .app-brand h1 { font-size: 1.35rem; font-weight: 700; color: var(--text-main); margin: 0; letter-spacing: -0.02em; }
+
+        /* Card Elements */
+        .card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: var(--shadow-subtle);
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        .card-title { margin: 0; font-size: 1.1rem; font-weight: 700; color: var(--text-main); }
+
+        /* Metrics Display Grid */
+        .metrics-grid { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); 
+            gap: 16px; 
+            margin-bottom: 24px; 
+        }
+        .metric-card { 
+            background: var(--surface); 
+            border: 1px solid var(--border); 
+            padding: 20px; 
+            border-radius: var(--radius-lg); 
+            box-shadow: var(--shadow-subtle);
+        }
+        .metric-card span { font-size: 0.75rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .metric-card div { font-size: 1.85rem; font-weight: 800; margin-top: 6px; letter-spacing: -0.02em; }
+
+        /* Drop Zone */
+        .batch-drop-zone {
+            border: 2px dashed var(--border-hover);
+            padding: 32px 20px;
+            text-align: center;
+            border-radius: var(--radius-md);
+            background: #fafafa;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .batch-drop-zone:hover {
+            border-color: var(--solar-primary);
+            background: var(--solar-bg);
+        }
+        .batch-drop-zone input { display: none; }
+
+        /* Form Controls & Toolbar */
+        select, button {
+            font-family: inherit;
+            padding: 8px 14px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+            outline: none;
+            background: var(--surface);
+        }
+        select:focus { border-color: var(--solar-primary); box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12); }
+
+        .btn { font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+        .btn-secondary { background: var(--surface); border-color: var(--border); color: var(--text-main); }
+        .btn-secondary:hover { background: #f1f5f9; }
+
+        .btn-toggle-group { display: flex; gap: 4px; background: #f1f5f9; padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border); }
+        .btn-toggle { background: transparent; color: var(--text-muted); border: none; cursor: pointer; font-weight: 600; padding: 6px 14px; border-radius: var(--radius-sm); font-size: 0.8rem; }
+        .btn-toggle.active { background: var(--surface); color: var(--text-main); box-shadow: var(--shadow-subtle); }
+
+        /* Chart Canvas Area */
+        .chart-container { position: relative; height: 380px; width: 100%; margin-top: 8px; }
+
+        /* Table Styling */
+        .table-responsive { overflow-x: auto; margin-top: 8px; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+        th { background: #f8fafc; color: var(--text-muted); font-weight: 600; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; position: sticky; top: 0; }
+        tbody tr:hover { background: #f8fafc; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Navbar -->
+    <div class="app-navbar">
+        <div class="app-brand">
+            <div class="app-brand-icon">☀️</div>
+            <h1>Solar Energy Monitor</h1>
+        </div>
+        <div>
+            <label for="solar-month-filter" style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted); margin-right: 6px;">Filter Month:</label>
+            <select id="solar-month-filter" onchange="renderSolarDashboard()"></select>
+        </div>
+    </div>
+
+    <!-- Upload Solar CSVs -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">📁 Import Solar Energy Data</h3>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Supports daily/monthly generation CSV exports</span>
+        </div>
+        <div class="batch-drop-zone" onclick="document.getElementById('solar-files').click()">
+            <span style="font-size: 2rem; display: block; margin-bottom: 8px;">☀️</span>
+            <span style="font-size: 0.95rem; font-weight: 600; color: var(--text-main);">Click or Drag & Drop Solar CSV logs here</span>
+            <input type="file" id="solar-files" accept=".csv" multiple onchange="handleSolarUpload(event)">
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 10px;" id="upload-status">Ready to import solar log files. Duplicate records are merged automatically.</div>
+    </div>
+
+    <!-- KPI Summary Cards -->
+    <div class="metrics-grid">
+        <div class="metric-card" style="border-top: 4px solid var(--generated-color);">
+            <span>Generated</span>
+            <div id="m-generated" style="color: var(--solar-primary);">0.0 kWh</div>
+        </div>
+        <div class="metric-card" style="border-top: 4px solid var(--consumed-color);">
+            <span>Consumed</span>
+            <div id="m-consumed" style="color: var(--consumed-color);">0.0 kWh</div>
+        </div>
+        <div class="metric-card" style="border-top: 4px solid var(--purchased-color);">
+            <span>Purchased</span>
+            <div id="m-purchased" style="color: var(--purchased-color);">0.0 kWh</div>
+        </div>
+    </div>
+
+    <!-- Analytics Chart View -->
+    <div class="card">
+        <div class="card-header">
+            <div class="btn-toggle-group">
+                <button id="btnViewOverall" class="btn-toggle" onclick="setSolarViewMode('overall')">Overall</button>
+                <button id="btnViewYearly" class="btn-toggle" onclick="setSolarViewMode('yearly')">Yearly</button>
+                <button id="btnViewMonthly" class="btn-toggle" onclick="setSolarViewMode('monthly')">Monthly</button>
+                <button id="btnViewDaily" class="btn-toggle active" onclick="setSolarViewMode('daily')">Daily View</button>
+            </div>
+            <span id="solar-period-title" style="font-weight: 600; color: var(--text-muted); font-size: 0.85rem;"></span>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="solarChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Daily Energy Records</h3>
+            <button class="btn btn-secondary" onclick="clearSolarData()">🧹 Clear Solar Data</button>
+        </div>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Generated (kWh)</th>
+                        <th>Consumed (kWh)</th>
+                        <th>Purchased (kWh)</th>
+                    </tr>
+                </thead>
+                <tbody id="solar-table-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    let solarDailyData = JSON.parse(localStorage.getItem('solar_daily_data')) || [];
+    let currentSolarViewMode = 'daily';
+    let solarChartInstance;
+
+    function parseNum(val) {
+        if (val === undefined || val === null || val === '') return 0;
+        let num = parseFloat(String(val).replace(/,/g, '').replace(/円/g, ''));
+        return isNaN(num) ? 0 : num;
+    }
+
+    function sanitizeDate(rawDateStr) {
+        if (!rawDateStr) return null;
+        let dateOnly = String(rawDateStr).trim().split(' ')[0];
+        let clean = dateOnly.replace(/\./g, '-').replace(/\//g, '-').replace(/年|月/g, '-').replace(/日/g, '').trim();
+        let parts = clean.split('-');
+        if (parts.length < 3) return null;
+        let year = parseInt(parts[0], 10);
+        let month = parseInt(parts[1], 10);
+        let day = parseInt(parts[2], 10);
+        if (isNaN(year) || isNaN(month) || isNaN(day) || month < 1 || month > 12) return null;
+        if (year < 100) year += 2000;
+        return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+
+    function cleanHeader(hdr) {
+        return hdr ? hdr.replace(/^\uFEFF/, '').replace(/["']/g, '').trim() : '';
+    }
+
+    async function handleSolarUpload(event) {
+        const files = Array.from(event.target.files);
+        const status = document.getElementById('upload-status');
+        if (files.length === 0) return;
+
+        let totalExtracted = 0;
+        for (let file of files) {
+            status.textContent = `Processing ${file.name}...`;
+            const extracted = await processSolarCSV(file);
+            totalExtracted += extracted;
+        }
+
+        consolidateSolarData();
+        status.textContent = `Import complete! Added ${totalExtracted} solar records.`;
+    }
+
+    function processSolarCSV(file) {
+        return new Promise((resolve) => {
+            let extractedCount = 0;
+            Papa.parse(file, {
+                header: false,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    let rows = results.data;
+                    if (!rows || rows.length === 0) return resolve(0);
+
+                    let headerIndex = -1;
+                    const dateHeaders = ['年月日', '年月', 'Date', 'Month', '日付'];
+
+                    for (let i = 0; i < rows.length; i++) {
+                        let cleanedRow = rows[i].map(cleanHeader);
+                        if (cleanedRow.some(col => dateHeaders.includes(col))) {
+                            headerIndex = i;
+                            break;
+                        }
+                    }
+
+                    if (headerIndex === -1) return resolve(0);
+                    let headers = rows[headerIndex].map(cleanHeader);
+
+                    for (let i = headerIndex + 1; i < rows.length; i++) {
+                        let rowArr = rows[i];
+                        let row = {};
+                        headers.forEach((h, idx) => {
+                            row[h] = rowArr[idx] !== undefined ? String(rowArr[idx]).replace(/["']/g, '').trim() : '';
+                        });
+
+                        let rawDate = row['年月日'] || row['Date'] || row['日付'] || '';
+                        let cleanDate = sanitizeDate(rawDate);
+
+                        if (cleanDate && (row['発電電力量[kWh]'] !== undefined || row['Generated'] !== undefined)) {
+                            solarDailyData.push({
+                                date: cleanDate,
+                                generated: parseNum(row['発電電力量[kWh]'] || row['Generated']),
+                                consumed: parseNum(row['消費電力量[kWh]'] || row['Consumed']),
+                                purchased: parseNum(row['買電電力量[kWh]'] || row['Purchased'])
+                            });
+                            extractedCount++;
+                        }
+                    }
+                    resolve(extractedCount);
+                }
+            });
+        });
+    }
+
+    function consolidateSolarData() {
+        const solarMap = new Map();
+        solarDailyData.forEach(item => { if (item.date) solarMap.set(item.date, item); });
+        solarDailyData = Array.from(solarMap.values());
+        localStorage.setItem('solar_daily_data', JSON.stringify(solarDailyData));
+        renderSolarDashboard();
+    }
+
+    function clearSolarData() {
+        if (confirm("Are you sure you want to clear all solar records?")) {
+            solarDailyData = [];
+            localStorage.removeItem('solar_daily_data');
+            renderSolarDashboard();
+        }
+    }
+
+    function populateMonthFilter() {
+        const monthSelect = document.getElementById('solar-month-filter');
+        const curMonth = monthSelect.value;
+        monthSelect.innerHTML = '<option value="ALL">All Months</option>';
+
+        const months = new Set();
+        solarDailyData.forEach(s => { if (s.date) months.add(s.date.substring(0, 7)); });
+
+        const sortedMonths = Array.from(months).sort().reverse();
+        sortedMonths.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m; opt.textContent = m;
+            monthSelect.appendChild(opt);
+        });
+
+        if (curMonth && sortedMonths.includes(curMonth)) monthSelect.value = curMonth;
+    }
+
+    function setSolarViewMode(mode) {
+        currentSolarViewMode = mode;
+        document.getElementById('btnViewOverall').classList.toggle('active', mode === 'overall');
+        document.getElementById('btnViewYearly').classList.toggle('active', mode === 'yearly');
+        document.getElementById('btnViewMonthly').classList.toggle('active', mode === 'monthly');
+        document.getElementById('btnViewDaily').classList.toggle('active', mode === 'daily');
+        renderSolarDashboard();
+    }
+
+    function renderSolarDashboard() {
+        populateMonthFilter();
+        const selectedMonth = document.getElementById('solar-month-filter').value || 'ALL';
+        let title = '';
+
+        let labels = [], dataGenerated = [], dataConsumed = [], dataPurchased = [];
+        let totalGen = 0, totalCon = 0, totalPur = 0;
+
+        if (currentSolarViewMode === 'daily') {
+            title = `Scope: Daily (${selectedMonth})`;
+            const filtered = solarDailyData.filter(d => selectedMonth === 'ALL' || d.date.startsWith(selectedMonth));
+            filtered.sort((a,b) => a.date.localeCompare(b.date));
+
+            filtered.forEach(d => {
+                labels.push(d.date);
+                dataGenerated.push(d.generated);
+                dataConsumed.push(d.consumed);
+                dataPurchased.push(d.purchased);
+                totalGen += d.generated; totalCon += d.consumed; totalPur += d.purchased;
+            });
+        } else if (currentSolarViewMode === 'monthly') {
+            title = `Scope: Monthly View`;
+            const monthlyAgg = {};
+            solarDailyData.forEach(d => {
+                const mKey = d.date.substring(0, 7);
+                if (!monthlyAgg[mKey]) monthlyAgg[mKey] = { generated: 0, consumed: 0, purchased: 0 };
+                monthlyAgg[mKey].generated += d.generated;
+                monthlyAgg[mKey].consumed += d.consumed;
+                monthlyAgg[mKey].purchased += d.purchased;
+            });
+
+            Object.keys(monthlyAgg).sort().forEach(m => {
+                if (selectedMonth === 'ALL' || m === selectedMonth) {
+                    labels.push(m);
+                    dataGenerated.push(monthlyAgg[m].generated);
+                    dataConsumed.push(monthlyAgg[m].consumed);
+                    dataPurchased.push(monthlyAgg[m].purchased);
+                    totalGen += monthlyAgg[m].generated; totalCon += monthlyAgg[m].consumed; totalPur += monthlyAgg[m].purchased;
+                }
+            });
+        } else if (currentSolarViewMode === 'yearly') {
+            title = `Scope: Yearly Consolidated View`;
+            const yearlyAgg = {};
+            solarDailyData.forEach(d => {
+                const yKey = d.date.substring(0, 4);
+                if (!yearlyAgg[yKey]) yearlyAgg[yKey] = { generated: 0, consumed: 0, purchased: 0 };
+                yearlyAgg[yKey].generated += d.generated;
+                yearlyAgg[yKey].consumed += d.consumed;
+                yearlyAgg[yKey].purchased += d.purchased;
+            });
+
+            Object.keys(yearlyAgg).sort().forEach(y => {
+                labels.push(y);
+                dataGenerated.push(yearlyAgg[y].generated);
+                dataConsumed.push(yearlyAgg[y].consumed);
+                dataPurchased.push(yearlyAgg[y].purchased);
+                totalGen += yearlyAgg[y].generated; totalCon += yearlyAgg[y].consumed; totalPur += yearlyAgg[y].purchased;
+            });
+        } else if (currentSolarViewMode === 'overall') {
+            title = `Scope: Overall All-Time Summary`;
+            solarDailyData.forEach(d => {
+                totalGen += d.generated;
+                totalCon += d.consumed;
+                totalPur += d.purchased;
+            });
+
+            labels = ['Overall All-Time Total'];
+            dataGenerated = [totalGen];
+            dataConsumed = [totalCon];
+            dataPurchased = [totalPur];
+        }
+
+        document.getElementById('solar-period-title').textContent = title;
+        document.getElementById('m-generated').textContent = `${totalGen.toFixed(1)} kWh`;
+        document.getElementById('m-consumed').textContent = `${totalCon.toFixed(1)} kWh`;
+        document.getElementById('m-purchased').textContent = `${totalPur.toFixed(1)} kWh`;
+
+        renderTable(selectedMonth);
+
+        if (solarChartInstance) solarChartInstance.destroy();
+
+        const ctx = document.getElementById('solarChart').getContext('2d');
+        solarChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels.length > 0 ? labels : ['No Data'],
+                datasets: [
+                    { label: 'Generated (kWh)', data: dataGenerated, backgroundColor: '#f59e0b', borderRadius: 4 },
+                    { label: 'Consumed (kWh)', data: dataConsumed, backgroundColor: '#10b981', borderRadius: 4 },
+                    { label: 'Purchased (kWh)', data: dataPurchased, backgroundColor: '#ef4444', borderRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true, title: { display: true, text: 'kWh' } } }
+            }
+        });
+    }
+
+    function renderTable(selectedMonth) {
+        const tbody = document.getElementById('solar-table-body');
+        tbody.innerHTML = '';
+
+        const filtered = solarDailyData.filter(d => selectedMonth === 'ALL' || d.date.startsWith(selectedMonth));
+        filtered.sort((a,b) => b.date.localeCompare(a.date));
+
+        filtered.forEach(item => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td style="font-weight: 500;">${item.date}</td>
+                <td style="color: #d97706; font-weight: 600;">${item.generated.toFixed(1)}</td>
+                <td style="color: #059669; font-weight: 600;">${item.consumed.toFixed(1)}</td>
+                <td style="color: #dc2626; font-weight: 600;">${item.purchased.toFixed(1)}</td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    renderSolarDashboard();
+</script>
+</body>
+</html>
