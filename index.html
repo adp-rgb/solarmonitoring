@@ -128,12 +128,12 @@
         .btn-secondary { background: var(--surface); border-color: var(--border); color: var(--text-main); }
         .btn-secondary:hover { background: #f1f5f9; }
 
-        .btn-toggle-group { display: flex; gap: 4px; background: #f1f5f9; padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border); }
+        .btn-toggle-group { display: flex; gap: 4px; background: #f1f5f9; padding: 4px; border-radius: var(--radius-md); border: 1px solid var(--border); flex-wrap: wrap; }
         .btn-toggle { background: transparent; color: var(--text-muted); border: none; cursor: pointer; font-weight: 600; padding: 6px 14px; border-radius: var(--radius-sm); font-size: 0.8rem; }
         .btn-toggle.active { background: var(--surface); color: var(--text-main); box-shadow: var(--shadow-subtle); }
 
         /* Chart Canvas Area */
-        .chart-container { position: relative; height: 380px; width: 100%; margin-top: 8px; }
+        .chart-container { position: relative; height: 420px; width: 100%; margin-top: 8px; }
 
         /* Table Styling */
         .table-responsive { overflow-x: auto; margin-top: 8px; }
@@ -194,10 +194,21 @@
             <div class="btn-toggle-group">
                 <button id="btnViewOverall" class="btn-toggle" onclick="setSolarViewMode('overall')">Overall</button>
                 <button id="btnViewYearly" class="btn-toggle" onclick="setSolarViewMode('yearly')">Yearly</button>
+                <button id="btnViewCompare3Y" class="btn-toggle" onclick="setSolarViewMode('compare3y')">3-Year Monthly Comparison</button>
                 <button id="btnViewMonthly" class="btn-toggle" onclick="setSolarViewMode('monthly')">Monthly</button>
                 <button id="btnViewDaily" class="btn-toggle active" onclick="setSolarViewMode('daily')">Daily View</button>
             </div>
             <span id="solar-period-title" style="font-weight: 600; color: var(--text-muted); font-size: 0.85rem;"></span>
+        </div>
+
+        <!-- Metric Filter Switch for 3-Year Comparison Mode -->
+        <div id="compare-metric-selector" style="display: none; margin-bottom: 16px; align-items: center; gap: 8px;">
+            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Comparison Metric:</label>
+            <select id="compare-metric-type" onchange="renderSolarDashboard()">
+                <option value="generated">Generated Energy (kWh)</option>
+                <option value="consumed">Consumed Energy (kWh)</option>
+                <option value="purchased">Purchased Energy (kWh)</option>
+            </select>
         </div>
 
         <div class="chart-container">
@@ -360,8 +371,12 @@
         currentSolarViewMode = mode;
         document.getElementById('btnViewOverall').classList.toggle('active', mode === 'overall');
         document.getElementById('btnViewYearly').classList.toggle('active', mode === 'yearly');
+        document.getElementById('btnViewCompare3Y').classList.toggle('active', mode === 'compare3y');
         document.getElementById('btnViewMonthly').classList.toggle('active', mode === 'monthly');
         document.getElementById('btnViewDaily').classList.toggle('active', mode === 'daily');
+
+        document.getElementById('compare-metric-selector').style.display = mode === 'compare3y' ? 'flex' : 'none';
+
         renderSolarDashboard();
     }
 
@@ -370,13 +385,51 @@
         const selectedMonth = document.getElementById('solar-month-filter').value || 'ALL';
         let title = '';
 
-        let labels = [], dataGenerated = [], dataConsumed = [], dataPurchased = [];
+        let datasets = [];
+        let labels = [];
         let totalGen = 0, totalCon = 0, totalPur = 0;
 
-        if (currentSolarViewMode === 'daily') {
+        if (currentSolarViewMode === 'compare3y') {
+            const metricType = document.getElementById('compare-metric-type').value || 'generated';
+            const metricLabels = { generated: 'Generated', consumed: 'Consumed', purchased: 'Purchased' };
+            title = `Scope: 3-Year Monthly Comparison (${metricLabels[metricType]})`;
+
+            // Identify unique available years
+            const yearsSet = new Set();
+            solarDailyData.forEach(d => { if (d.date) yearsSet.add(d.date.substring(0, 4)); });
+            let sortedYears = Array.from(yearsSet).sort().slice(-3); // Get latest 3 years
+
+            if (sortedYears.length === 0) sortedYears = [new Date().getFullYear().toString()];
+
+            labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const yearColors = ['#2563eb', '#10b981', '#f59e0b'];
+
+            // Aggregate data: { Year: { monthIdx: total } }
+            const yearAgg = {};
+            sortedYears.forEach(y => yearAgg[y] = Array(12).fill(0));
+
+            solarDailyData.forEach(d => {
+                const y = d.date.substring(0, 4);
+                const mIdx = parseInt(d.date.substring(5, 7), 10) - 1;
+                if (yearAgg[y] && mIdx >= 0 && mIdx < 12) {
+                    yearAgg[y][mIdx] += d[metricType];
+                }
+                totalGen += d.generated; totalCon += d.consumed; totalPur += d.purchased;
+            });
+
+            datasets = sortedYears.map((y, idx) => ({
+                label: `Year ${y}`,
+                data: yearAgg[y],
+                backgroundColor: yearColors[idx % yearColors.length],
+                borderRadius: 4
+            }));
+
+        } else if (currentSolarViewMode === 'daily') {
             title = `Scope: Daily (${selectedMonth})`;
             const filtered = solarDailyData.filter(d => selectedMonth === 'ALL' || d.date.startsWith(selectedMonth));
             filtered.sort((a,b) => a.date.localeCompare(b.date));
+
+            let dataGenerated = [], dataConsumed = [], dataPurchased = [];
 
             filtered.forEach(d => {
                 labels.push(d.date);
@@ -385,6 +438,13 @@
                 dataPurchased.push(d.purchased);
                 totalGen += d.generated; totalCon += d.consumed; totalPur += d.purchased;
             });
+
+            datasets = [
+                { label: 'Generated (kWh)', data: dataGenerated, backgroundColor: '#f59e0b', borderRadius: 4 },
+                { label: 'Consumed (kWh)', data: dataConsumed, backgroundColor: '#10b981', borderRadius: 4 },
+                { label: 'Purchased (kWh)', data: dataPurchased, backgroundColor: '#ef4444', borderRadius: 4 }
+            ];
+
         } else if (currentSolarViewMode === 'monthly') {
             title = `Scope: Monthly View`;
             const monthlyAgg = {};
@@ -396,6 +456,8 @@
                 monthlyAgg[mKey].purchased += d.purchased;
             });
 
+            let dataGenerated = [], dataConsumed = [], dataPurchased = [];
+
             Object.keys(monthlyAgg).sort().forEach(m => {
                 if (selectedMonth === 'ALL' || m === selectedMonth) {
                     labels.push(m);
@@ -405,6 +467,13 @@
                     totalGen += monthlyAgg[m].generated; totalCon += monthlyAgg[m].consumed; totalPur += monthlyAgg[m].purchased;
                 }
             });
+
+            datasets = [
+                { label: 'Generated (kWh)', data: dataGenerated, backgroundColor: '#f59e0b', borderRadius: 4 },
+                { label: 'Consumed (kWh)', data: dataConsumed, backgroundColor: '#10b981', borderRadius: 4 },
+                { label: 'Purchased (kWh)', data: dataPurchased, backgroundColor: '#ef4444', borderRadius: 4 }
+            ];
+
         } else if (currentSolarViewMode === 'yearly') {
             title = `Scope: Yearly Consolidated View`;
             const yearlyAgg = {};
@@ -416,6 +485,8 @@
                 yearlyAgg[yKey].purchased += d.purchased;
             });
 
+            let dataGenerated = [], dataConsumed = [], dataPurchased = [];
+
             Object.keys(yearlyAgg).sort().forEach(y => {
                 labels.push(y);
                 dataGenerated.push(yearlyAgg[y].generated);
@@ -423,6 +494,13 @@
                 dataPurchased.push(yearlyAgg[y].purchased);
                 totalGen += yearlyAgg[y].generated; totalCon += yearlyAgg[y].consumed; totalPur += yearlyAgg[y].purchased;
             });
+
+            datasets = [
+                { label: 'Generated (kWh)', data: dataGenerated, backgroundColor: '#f59e0b', borderRadius: 4 },
+                { label: 'Consumed (kWh)', data: dataConsumed, backgroundColor: '#10b981', borderRadius: 4 },
+                { label: 'Purchased (kWh)', data: dataPurchased, backgroundColor: '#ef4444', borderRadius: 4 }
+            ];
+
         } else if (currentSolarViewMode === 'overall') {
             title = `Scope: Overall All-Time Summary`;
             solarDailyData.forEach(d => {
@@ -432,9 +510,11 @@
             });
 
             labels = ['Overall All-Time Total'];
-            dataGenerated = [totalGen];
-            dataConsumed = [totalCon];
-            dataPurchased = [totalPur];
+            datasets = [
+                { label: 'Generated (kWh)', data: [totalGen], backgroundColor: '#f59e0b', borderRadius: 4 },
+                { label: 'Consumed (kWh)', data: [totalCon], backgroundColor: '#10b981', borderRadius: 4 },
+                { label: 'Purchased (kWh)', data: [totalPur], backgroundColor: '#ef4444', borderRadius: 4 }
+            ];
         }
 
         document.getElementById('solar-period-title').textContent = title;
@@ -451,11 +531,7 @@
             type: 'bar',
             data: {
                 labels: labels.length > 0 ? labels : ['No Data'],
-                datasets: [
-                    { label: 'Generated (kWh)', data: dataGenerated, backgroundColor: '#f59e0b', borderRadius: 4 },
-                    { label: 'Consumed (kWh)', data: dataConsumed, backgroundColor: '#10b981', borderRadius: 4 },
-                    { label: 'Purchased (kWh)', data: dataPurchased, backgroundColor: '#ef4444', borderRadius: 4 }
-                ]
+                datasets: datasets
             },
             options: {
                 responsive: true,
